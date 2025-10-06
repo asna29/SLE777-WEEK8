@@ -1,0 +1,535 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r}
+# ===============================================
+# Gene Expression and Tree Growth Data Analysis
+# Author: Asna Fazilath
+# Date: Sys.Date()
+# ===============================================
+
+# ==============================
+# Part A: Gene Expression Analysis
+# ==============================
+
+# Step 1: Load required library
+library(DESeq2)
+
+```
+
+The gene expression dataset gene_expression.tsv was imported using read.delim() with the row.names argument to assign gene identifiers as row names. This structure facilitates gene-centric data analysis. The first six records were displayed to validate successful import.
+
+```{r}
+# Step 2: Read in gene expression data
+gene_expr <- read.delim("gene_expression.tsv", row.names = 1, check.names = FALSE)
+cat("First six genes:\n")
+print(head(gene_expr))
+```
+
+```{r}
+# Step 3: Create a sample table (no replicates, using ~1 design)
+sampleTable <- data.frame(
+  fileName = colnames(gene_expr),
+  condition = factor(rep("All", ncol(gene_expr)))
+)
+cat("\nSample Table:\n")
+print(sampleTable)
+```
+
+```{r}
+# Step 4: Create DESeqDataSet object
+dds <- DESeqDataSetFromMatrix(
+  countData = gene_expr,
+  colData = sampleTable,
+  design = ~1
+)
+```
+
+```{r}
+# Step 5: Pre-filter genes with low counts
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+```
+
+A new variable Mean was added to the dataset representing the average expression of each gene across the three samples, using rowMeans(). This aggregate metric was used for ranking and filtering genes. The first six rows with this new column were displayed.
+```{r}
+# Step 6: Add a column with mean expression across samples
+gene_expr$Mean <- rowMeans(gene_expr)
+cat("\nFirst six genes with mean expression:\n")
+print(head(gene_expr))
+```
+Genes were sorted in descending order based on their mean expression, and the top 10 were extracted using indexing. This highlights genes with the greatest cumulative expression.
+```{r}
+# Step 7: List the 10 genes with the highest mean expression
+top10_genes <- head(gene_expr[order(-gene_expr$Mean), ], 10)
+cat("\nTop 10 genes with highest mean expression:\n")
+print(top10_genes)
+```
+To identify genes with low overall expression, the number of genes with a mean expression less than 10 was calculated using sum() on a logical condition.
+
+```{r}
+# Step 8: Determine number of genes with mean < 10
+num_low <- sum(gene_expr$Mean < 10)
+cat("\nNumber of genes with mean < 10:", num_low, "\n")
+```
+Found that 35,988 genes had mean expression values below 10.
+
+
+A histogram was plotted to visualize the distribution of mean gene expression values across all genes. Custom breaks and colors were set for clarity.
+```{r}
+# Step 9: Plot histogram of mean values
+hist(gene_expr$Mean,
+     main = "Histogram of Mean Gene Expression",
+     xlab = "Mean Expression",
+     col = "skyblue",
+     breaks = 30)
+```
+
+```{r}
+# ==============================
+# Part B: Growth Data Analysis (2010–2020)
+# ==============================
+
+# Step 1: Import growth data
+growth_data <- read.csv("growth_data.csv")
+cat("\nFirst few rows of growth data:\n")
+print(head(growth_data))
+cat("\nColumn names:\n")
+print(colnames(growth_data))
+```
+The growth_data.csv file was imported using read.csv(). The first six rows and column names were printed to confirm successful data loading and to inspect the variables available, including tree circumference measurements at multiple years.
+
+
+```{r}
+# Step 2: Calculate mean and SD at 2010 and 2020 for each site
+sites <- unique(growth_data$Site)
+growth_summary <- data.frame(
+  Site = character(),
+  Mean_2010 = numeric(),
+  SD_2010 = numeric(),
+  Mean_2020 = numeric(),
+  SD_2020 = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (s in sites) {
+  subset_data <- growth_data[growth_data$Site == s, ]
+  growth_summary <- rbind(growth_summary, data.frame(
+    Site = s,
+    Mean_2010 = mean(subset_data$Circumf_2010_cm, na.rm = TRUE),
+    SD_2010 = sd(subset_data$Circumf_2010_cm, na.rm = TRUE),
+    Mean_2020 = mean(subset_data$Circumf_2020_cm, na.rm = TRUE),
+    SD_2020 = sd(subset_data$Circumf_2020_cm, na.rm = TRUE)
+  ))
+}
+cat("\nMean and SD of tree circumference (2010 vs 2020):\n")
+print(growth_summary)
+```
+Mean and standard deviation of tree circumference at years 2010 and 2020 were computed separately for each site using a loop with mean() and sd(). Missing values were omitted in calculations.
+
+
+```{r}
+# Step 3: Boxplot of tree circumference (2010–2020)
+ne_2010 <- growth_data$Circumf_2010_cm[growth_data$Site == "northeast"]
+ne_2020 <- growth_data$Circumf_2020_cm[growth_data$Site == "northeast"]
+sw_2010 <- growth_data$Circumf_2010_cm[growth_data$Site == "southwest"]
+sw_2020 <- growth_data$Circumf_2020_cm[growth_data$Site == "southwest"]
+
+# Remove missing values
+ne_2010 <- ne_2010[!is.na(ne_2010)]
+ne_2020 <- ne_2020[!is.na(ne_2020)]
+sw_2010 <- sw_2010[!is.na(sw_2010)]
+sw_2020 <- sw_2020[!is.na(sw_2020)]
+
+# Create boxplot
+boxplot(ne_2010, ne_2020, sw_2010, sw_2020,
+        names = c("NE 2010", "NE 2020", "SW 2010", "SW 2020"),
+        main = "Tree Circumference 2010–2020",
+        ylab = "Circumference (cm)",
+        col = c("lightblue", "blue", "lightpink", "red"))
+```
+Boxplots were generated to compare the distribution of tree circumference at 2010 and 2020, grouped by site—"northeast" and "southwest". Prior to plotting, missing data was removed to prevent errors.
+
+```{r}
+# Step 4: Calculate mean growth over 10 years (2010–2020)
+growth_data$Growth_2010_2020 <- growth_data$Circumf_2020_cm - growth_data$Circumf_2010_cm
+mean_growth <- aggregate(Growth_2010_2020 ~ Site, data = growth_data, FUN = mean)
+cat("\nMean 10-year growth by site:\n")
+print(mean_growth)
+```
+Growth was calculated for each tree by subtracting circumference in 2010 from 2020. Group-wise means were then computed for each site.
+Mean growth over 10 years was higher at the northeast site compared to southwest.
+```{r}
+# Step 5: t-test for difference in 10-year growth between sites
+ne_growth <- growth_data$Growth_2010_2020[growth_data$Site == "northeast"]
+sw_growth <- growth_data$Growth_2010_2020[growth_data$Site == "southwest"]
+t_test_result <- t.test(ne_growth, sw_growth)
+
+cat("\nT-test result:\n")
+print(t_test_result)
+cat("\nP-value for difference in growth between sites:", t_test_result$p.value, "\n")
+
+# ==============================
+# End of Script
+# ==============================
+```
+A Welch two-sample t-test was conducted to test if the 10-year growth differed statistically between sites. The test was run on growth vectors per site.
+P-value = 0.0623, indicating no significant difference at the 0.05 level, but suggesting a trend toward greater growth in the northeast.
+
+
+
+
+
+
+
+
+```{r}
+# ===============================================
+# Part 2: Biological Sequence Diversity Analysis
+# Author: Asna Fazilath
+# Date: Sys.Date()
+# ===============================================
+
+# Load required packages
+suppressPackageStartupMessages({
+  library(seqinr)
+  library(R.utils)
+})
+
+# -------------------------------
+# Step 1: Download and load CDS data
+
+# E. coli CDS URL
+ecoli_url <- "http://ftp.ensemblgenomes.org/pub/bacteria/release-53/fasta/bacteria_0_collection/escherichia_coli_str_k_12_substr_mg1655_gca_000005845/cds/Escherichia_coli_str_k_12_substr_mg1655_gca_000005845.ASM584v2.cds.all.fa.gz"
+download.file(ecoli_url, destfile = "ecoli_cds.fa.gz")
+gunzip("ecoli_cds.fa.gz", overwrite=TRUE)
+cds_ecoli <- read.fasta("ecoli_cds.fa")
+
+# Staphylococcus aureus CDS URL
+staph_url <- "https://ftp.ensemblgenomes.ebi.ac.uk/pub/bacteria/release-62/fasta/bacteria_41_collection/staphylococcus_aureus_gca_002895385/cds/Staphylococcus_aureus_gca_002895385.ASM289538v1.cds.all.fa.gz"
+download.file(staph_url, destfile = "staph_cds.fa.gz")
+gunzip("staph_cds.fa.gz", overwrite=TRUE)
+cds_staph <- read.fasta("staph_cds.fa")
+```
+1. Downloading coding DNA sequences (CDS):
+Coding sequences for E. coli and the allocated organism (Staphylococcus aureus) were downloaded from curated genome FTP sources as compressed FASTA files. Each was decompressed and loaded into R using the read.fasta() function from the seqinr package. This provided a list of coding regions for each organism, enabling downstream analysis.
+
+```{r}
+# -------------------------------
+# Step 2: Number of coding sequences
+num_cds <- data.frame(
+  Organism = c("E. coli", "S. aureus"),
+  Num_CDS = c(length(cds_ecoli), length(cds_staph))
+)
+print(num_cds)
+```
+2. Counting coding sequences:
+The total number of CDS in each organism was determined by calculating the length of the imported list object. These counts were tabulated for comparison.
+Table: Shows the number of CDS per organism.
+
+The Escherichia coli genome contains 4239 coding sequences, which is notably higher than the 2942 CDS found in Staphylococcus aureus. This difference reflects variation in genome size and gene content between these two bacterial species. E. coli, being a versatile gut bacterium, generally possesses a larger and more diverse gene repertoire compared to S. aureus, which is a pathogen with a relatively smaller genome and fewer genes dedicated to specialized functions. This difference in gene number may influence their biological complexity and ecological niches.
+
+
+```{r}
+# -------------------------------
+# Step 3: Total coding DNA length
+total_cds_length <- function(cds_list) {
+  sum(sapply(cds_list, length))
+}
+total_dna <- data.frame(
+  Organism = c("E. coli", "S. aureus"),
+  Total_CDS_Length = c(total_cds_length(cds_ecoli), total_cds_length(cds_staph))
+)
+print(total_dna)
+```
+3. Total coding DNA length:
+The sum of all sequence lengths was computed for each organism using a helper function. This value represents the aggregate nucleotide content coded by all genes. Differences in total length may reflect genome organization or the number of genes.
+
+Table: Presents cumulative CDS length in base pairs.
+
+The total coding DNA length for Escherichia coli is approximately 3.98 million base pairs, which is substantially greater than that of Staphylococcus aureus at around 2.6 million base pairs. This difference is consistent with the greater number of coding sequences in E. coli and reflects its generally larger genome size. The larger coding DNA content in E. coli supports a wider metabolic diversity and adaptability compared to S. aureus, which has a smaller, more specialized genome typically associated with its pathogenic lifestyle.
+
+
+```{r}
+# -------------------------------
+# Step 4: CDS length distribution and boxplot
+cds_lengths_ecoli <- sapply(cds_ecoli, length)
+cds_lengths_staph <- sapply(cds_staph, length)
+
+# Boxplot
+boxplot(cds_lengths_ecoli, cds_lengths_staph,
+        names=c("E. coli", "S. aureus"),
+        main="Coding Sequence Lengths",
+        ylab="Length (bp)", col=c("lightblue","lightpink"))
+
+# Mean and median
+cds_stats <- data.frame(
+  Organism = c("E. coli", "S. aureus"),
+  Mean_Length = c(mean(cds_lengths_ecoli), mean(cds_lengths_staph)),
+  Median_Length = c(median(cds_lengths_ecoli), median(cds_lengths_staph))
+)
+print(cds_stats)
+
+```
+
+4. CDS length distribution:
+Lengths for all individual CDS were calculated and compared with summary statistics (mean, median). Distribution was visualized using a boxplot to highlight variability. Differences in mean and median CDS length were described, and might relate to gene structure variation between species.
+
+The boxplot above compares the distributions of coding sequence lengths in Escherichia coli and Staphylococcus aureus. Both organisms show most CDS lengths clustered below 2000 bp, but with a few notable long outliers—particularly in S. aureus.
+E. coli has a higher mean and median CDS length than S. aureus, suggesting it generally possesses longer coding sequences. The presence of high outliers in both species, but more pronounced in S. aureus, reflects some unusually large genes that may contribute special functions. Overall, E. coli exhibits a slightly broader spread of lengths, whereas S. aureus has a tighter cluster of gene lengths but a few extremely long CDS. These differences could relate to factors such as genome organization and biological roles specific to each organism.
+
+
+```{r}
+# -------------------------------
+# Step 5: Nucleotide composition
+# -------------------------------
+nt_count <- function(cds_list) {
+  freq <- setNames(rep(0, 4), c("A","C","G","T"))
+  for(seq in cds_list) {
+    seq <- toupper(as.character(seq))
+    seq <- seq[seq %in% c("A","C","G","T")]
+    freq <- freq + table(factor(seq, levels=c("A","C","G","T")))
+  }
+  return(freq)
+}
+
+nt_ecoli <- nt_count(cds_ecoli)
+nt_staph <- nt_count(cds_staph)
+
+# Barplots
+par(mfrow=c(1,2))
+barplot(nt_ecoli, col="lightblue", main="E. coli Nucleotide Composition", ylab="Frequency")
+barplot(nt_staph, col="lightpink", main="S. aureus Nucleotide Composition", ylab="Frequency")
+par(mfrow=c(1,1))
+
+```
+The frequency of DNA bases (A, C, G, T) across all coding sequences for both E. coli and S. aureus was calculated by summing the occurrences of each nucleotide throughout their CDS datasets.
+Nucleotide Composition
+In E. coli (left barplot, blue), the frequencies of A, C, G, and T are relatively balanced, though G is slightly higher, which suggests a moderate GC content.
+
+In S. aureus (right barplot, pink), there is a pronounced dominance of A and T over C and G, indicating an AT-rich genome.
+
+This difference reflects underlying genome structure. E. coli (moderate GC content) may have greater genome stability and a broader codon repertoire, whereas S. aureus (AT-rich) may be under different mutational biases or selective pressures.
+
+```{r}
+# -------------------------------
+# Step 6: Amino Acid composition
+# -------------------------------
+aa_count <- function(cds_list) {
+  prot_list <- lapply(cds_list, function(seq) {
+    prot <- try(translate(seq), silent=TRUE)
+    if(inherits(prot, "try-error")) return(NULL)
+    prot
+  })
+  prot <- unlist(prot_list)
+  std_aa <- c("A","C","D","E","F","G","H","I","K","L","M","N","P","Q","R","S","T","V","W","Y")
+  prot <- prot[prot %in% std_aa]
+  table(factor(prot, levels=std_aa))
+}
+
+aa_ecoli <- aa_count(cds_ecoli)
+aa_staph <- aa_count(cds_staph)
+
+par(mfrow=c(1,2))
+barplot(aa_ecoli, col="lightblue", main="E. coli Amino Acid Composition", ylab="Frequency")
+barplot(aa_staph, col="lightpink", main="S. aureus Amino Acid Composition", ylab="Frequency")
+par(mfrow=c(1,1))
+
+```
+Total protein sequences were generated by translating all CDS, and the frequencies of each amino acid were tallied. 
+Amino Acid Composition
+The E. coli protein frequency barplot (blue) shows a high abundance of certain amino acids such as leucine, alanine, and glycine, reflecting the codon usage and genome composition.
+
+The S. aureus protein frequency barplot (pink) also reveals organism-specific variations, with some amino acids more or less represented compared to E. coli.
+
+Amino acid differences arise partly from the underlying DNA sequence composition (e.g., GC content influences codon choices, which affect amino acid output). Organisms with AT-rich genomes may show higher frequencies of amino acids coded by AT-rich codons (e.g., isoleucine, phenylalanine), while GC-rich organisms may favor others (e.g., glycine, alanine).
+
+Summary of Differences:
+
+E. coli exhibits a balanced base composition and a diverse amino acid profile linked to moderate GC content.
+
+S. aureus demonstrates pronounced AT-bias at the DNA level, mirrored in the amino acid content of its proteome.
+
+Such biases can impact protein stability, gene expression efficiency, and reflect evolutionary adaptations to different environments.
+
+These trends are visually apparent in the provided bar plots, enhancing interpretation of genome and proteome differences between the species.The frequency of DNA bases (A, C, G, T) in all coding sequences for E. coli and S. aureus was calculated by counting each nucleotide occurrence across every CDS in the genome. This was visualized in a bar plot: E. coli shows roughly balanced use of all four bases, while S. aureus has noticeably higher A and T content, reflecting an AT-rich genome compared to the more GC-rich E. coli.
+
+For proteins, all CDS were translated and total occurrences of each amino acid were counted. Bar plots show that both organisms share some highly abundant amino acids, but the relative frequencies differ. Amino acids whose codons are AT-rich (like lysine and isoleucine) are generally more frequent in S. aureus, while those encoded by GC-rich codons (like alanine and glycine) are relatively more frequent in E. coli. These differences in both nucleotide and amino acid composition highlight how genomic GC-content influences proteome composition and can be linked to evolutionary adaptation or environmental constraints.
+
+```{r}
+# ---------------------------------------
+# Step 7: Codon Usage Bias Analysis 
+# ---------------------------------------
+
+# Load packages
+library(seqinr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Step 1: Compute codon counts and RSCU
+codon_counts_ecoli <- uco(unlist(cds_ecoli), index = "eff")
+codon_counts_staph <- uco(unlist(cds_staph), index = "eff")
+
+rscu_ecoli <- uco(unlist(cds_ecoli), index = "rscu")
+rscu_staph <- uco(unlist(cds_staph), index = "rscu")
+
+# Step 2: Create codon usage table
+codon_table <- data.frame(
+  Codon = names(codon_counts_ecoli),
+  E_coli_count = as.numeric(codon_counts_ecoli),
+  S_aureus_count = as.numeric(codon_counts_staph),
+  E_coli_RSCU = as.numeric(rscu_ecoli),
+  S_aureus_RSCU = as.numeric(rscu_staph)
+)
+
+# Step 3: Compute difference in RSCU and sort
+codon_table <- codon_table %>%
+  mutate(RSCU_diff = abs(E_coli_RSCU - S_aureus_RSCU)) %>%
+  arrange(desc(RSCU_diff))
+
+# Step 4: View codon usage table
+print(codon_table)
+
+# Step 5: Bar plots of top 20 RSCU codons per organism
+top20_ecoli <- codon_table %>% arrange(desc(E_coli_RSCU)) %>% slice(1:20)
+top20_staph <- codon_table %>% arrange(desc(S_aureus_RSCU)) %>% slice(1:20)
+
+# E. coli top 20
+ggplot(top20_ecoli, aes(x=reorder(Codon, -E_coli_RSCU), y=E_coli_RSCU, fill="E. coli")) +
+  geom_bar(stat="identity") +
+  theme_minimal() +
+  labs(title="Top 20 Codons by RSCU — E. coli", x="Codon", y="RSCU") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1)) +
+  scale_fill_manual(values="lightblue")
+
+# S. aureus top 20
+ggplot(top20_staph, aes(x=reorder(Codon, -S_aureus_RSCU), y=S_aureus_RSCU, fill="S. aureus")) +
+  geom_bar(stat="identity") +
+  theme_minimal() +
+  labs(title="Top 20 Codons by RSCU — S. aureus", x="Codon", y="RSCU") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1)) +
+  scale_fill_manual(values="lightpink")
+
+# Step 6: Combined RSCU comparison bar plot
+codon_long <- codon_table %>%
+  select(Codon, E_coli_RSCU, S_aureus_RSCU) %>%
+  pivot_longer(cols=c(E_coli_RSCU, S_aureus_RSCU), 
+               names_to="Organism", values_to="RSCU") %>%
+  mutate(Organism = ifelse(Organism == "E_coli_RSCU", "E. coli", "S. aureus"))
+
+ggplot(codon_long, aes(x=reorder(Codon, -RSCU), y=RSCU, fill=Organism)) +
+  geom_bar(stat="identity", position="dodge") +
+  theme_minimal() +
+  labs(title="Codon Usage Comparison (RSCU)", x="Codon", y="RSCU") +
+  theme(axis.text.x = element_text(angle=90, vjust=0.5, hjust=1)) +
+  scale_fill_manual(values=c("lightblue", "lightpink"))
+
+```
+
+7. Codon usage bias analysis:
+A codon usage table was created for both E. coli and S. aureus, showing the relative synonymous codon usage (RSCU) for each codon based on all coding sequences. RSCU values represent how frequently each codon is used relative to synonymous alternatives for the same amino acid—values above 1 indicate a codon is favored, while values below 1 indicate it is less preferred. The comparison is visualized in the included bar plots.
+
+Codon Usage Bias: Methods and Results
+First, all CDS were parsed and counted by codon; RSCU (relative synonymous codon usage) was computed for each codon across both organisms.
+
+In the combined RSCU comparison bar plot, codons are on the x-axis with RSCU (vertical bars) colored by organism. This side-by-side display allows direct visual comparison for every codon.
+
+Observations and Differences
+Both organisms exhibit codon usage bias, but the preferred codons (those with highest RSCU) differ:
+
+E. coli is biased toward GC-rich codons (such as CTG, CGC, CGT, CCG), consistent with its higher genomic GC content.
+
+S. aureus shows stronger preferences for AT-rich codons (such as TTA), matching its overall AT-rich genome composition.
+
+The top 20 codons by RSCU in E. coli are almost all rich in G and C, supporting the organism's genomic bias.
+
+The top 20 codons in S. aureus include many codons rich in A and T, especially TTA (leucine), which is highly over-represented.
+
+Biological Interpretation
+These results indicate that codon usage bias in E. coli and S. aureus reflects their differing genomic base compositions and possibly their tRNA pools and translational selection. Bias towards certain codons can affect gene expression efficiency and reflects evolutionary adaptation to genome structure.
+
+The provided charts visually support these trends, making it clear which codons are most or least frequently used by each species and allowing you to describe both the quantitative and biological significance of codon usage bias between the organisms.
+
+
+```{r}
+# ===============================================
+# Step 8: Protein k-mer Analysis 
+# ===============================================
+
+# Load required package
+library(seqinr)
+
+# Translate CDS to protein sequences
+prot_staph <- lapply(cds_staph, function(x) translate(x, numcode = 11))
+prot_ecoli <- lapply(cds_ecoli, function(x) translate(x, numcode = 11))
+
+# Remove stop codons "*" and flatten into one long sequence
+prot_staph <- lapply(prot_staph, function(seq) seq[seq != "*"])
+prot_ecoli <- lapply(prot_ecoli, function(seq) seq[seq != "*"])
+prots_staph <- unlist(prot_staph)
+prots_ecoli <- unlist(prot_ecoli)
+
+# Define amino acid alphabet
+AA <- strsplit("ACDEFGHIKLMNPQRSTVWY", "")[[1]]
+
+# Helper function for k-mer frequency
+aa_kmer_freq <- function(aa_vec, k) {
+  seqinr::count(aa_vec, wordsize = k, alphabet = AA, freq = TRUE)
+}
+
+# Function to analyze and visualize k-mers
+analyze_kmers <- function(k) {
+  freq_staph <- aa_kmer_freq(prots_staph, k)
+  freq_ecoli <- aa_kmer_freq(prots_ecoli, k)
+
+  # Identify top 10 and bottom 10 (S. aureus)
+  top10 <- sort(freq_staph, decreasing = TRUE)[1:10]
+  bottom10 <- sort(freq_staph, decreasing = FALSE)[1:10]
+
+  # Align with E. coli for comparison
+  comp_top <- rbind(S_aureus = freq_staph[names(top10)],
+                    E_coli = freq_ecoli[names(top10)])
+  comp_bottom <- rbind(S_aureus = freq_staph[names(bottom10)],
+                       E_coli = freq_ecoli[names(bottom10)])
+
+  # Plot top and bottom 10 k-mers
+  par(mfrow = c(1, 2), mar = c(9, 4, 3, 1))
+  barplot(comp_top, beside = TRUE, las = 2,
+          main = paste("k =", k, "— Top 10 k-mers (S. aureus)"),
+          ylab = "Frequency", col = c("lightpink", "lightblue"))
+  barplot(comp_bottom, beside = TRUE, las = 2,
+          main = paste("k =", k, "— Bottom 10 k-mers (S. aureus)"),
+          ylab = "Frequency", col = c("lightpink", "lightblue"))
+  par(mfrow = c(1, 1))
+
+  return(list(k = k, top10 = top10, bottom10 = bottom10))
+}
+
+# Run analysis for k = 3, 4, 5
+res_k3 <- analyze_kmers(3)
+res_k4 <- analyze_kmers(4)
+res_k5 <- analyze_kmers(5)
+
+
+```
+For the protein k-mer analysis (length 3 in this example), the top 10 most over-represented and bottom 10 most under-represented k-mers in S. aureus protein sequences were identified and compared to their frequencies in E. coli. The provided barplots visualize these trends.
+
+Protein k-mer Analysis (k = 3)
+The top 10 k-mers in S. aureus (left panel, pink bars) include motifs like SDS, LLL, LLI, LKE, among others. The plot compares their frequency with those in E. coli (blue bars), showing that some k-mers are highly enriched in S. aureus but not as frequent in E. coli.
+
+The bottom 10 k-mers (right panel) are almost absent in S. aureus proteins, but some appear slightly more in E. coli, indicating organism-specific depletion.
+
+Comparison & Interpretation
+Over-represented k-mers: These motifs may be common structural elements or functional domains in S. aureus proteins, potentially linked to repeated use in cell wall or virulence factors. Some k-mers (like poly-leucine motifs) are likely related to the organism's bias in codon usage and amino acid composition.
+
+Under-represented k-mers: These include sequences rich in rare amino acids for S. aureus, reflecting the organism's genomic and proteomic biases. For example, CCC, CCR, and other proline/cysteine-rich motifs are uncommon.
+
+E. coli vs. S. aureus: E. coli does not always over-represent the same protein motifs, reflecting its distinct genome structure, amino acid preferences, and functional protein sets.
+
+Variations arise due to evolutionary pressures, differences in genome composition (GC- vs. AT-rich), protein family expansions, and organism-specific adaptions for survival in different environments.
+
